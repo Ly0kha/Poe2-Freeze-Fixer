@@ -7,10 +7,10 @@
 ## ✨ Features
 
 - 🔍 **Automatic Detection**: Detects the running Path of Exile 2 process.
-- ⚙️ **Dynamic Core Management**: disables (parks) CPU cores during gameplay and loading to prevent crashes.
-- 📄 **Log Monitoring**: Reads the `client.txt` file to track game loading events.
+- ⚙️ **Dynamic Core Management**: CPU usage to 90% during both gameplay and loading to improve stability and prevent crashes
+- 📄 **Log Monitoring**: Reads the `client.txt` file to track game loading event and end of loading event.
 - 🪶 **Lightweight**: Runs quietly in the background with minimal resource usage.
-- 📊 **Real-Time Feedback**: Displays **colored logs** for easy monitoring.
+- 📊 **Real-Time Feedback**: Displays **logs** for easy monitoring.
 
 ---
 
