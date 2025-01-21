@@ -12,7 +12,6 @@
 # own risk. Redistribution or modification is permitted with
 # proper attribution to the original author.
 # -----------------------------------------------------------
-
 import os
 import re
 import sys
@@ -20,149 +19,118 @@ import time
 import psutil
 import threading
 import logging
-from ctypes import windll
 
-# ------------------- Configuration -------------------
 GAME_PROCESS_NAMES = ["PathOfExileSteam.exe"]
+LOG_FILE_NAME = "client.txt"
 
-start_game_pattern = re.compile(
-    r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\s+\d+\s+[A-Fa-f0-9]+\s+\[INFO\s+Client\s+\d+\]\s+\[ENGINE\]\s+Init\s*$",
-    re.IGNORECASE,
+START_GAME_PATTERN = re.compile(
+    r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\s+\d+\s+[A-Fa-f0-9]+\s+\[INFO\s+Client\s+\d+\]\s+\[ENGINE\]\s+Init\s*$"
 )
-start_load_pattern = re.compile(
-    r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\s+\d+\s+[A-Fa-f0-9]+\s+\[INFO\s+Client\s+\d+\]\s+\[SHADER\]\s+Delay:\s+OFF\s*$",
-    re.IGNORECASE,
+START_LOAD_PATTERN = re.compile(
+    r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\s+\d+\s+[A-Fa-f0-9]+\s+\[INFO\s+Client\s+\d+\]\s+\[SHADER\]\s+Delay:\s+OFF\s*$"
 )
-end_load_pattern = re.compile(
-    r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\s+\d+\s+[A-Fa-f0-9]+\s+\[INFO\s+Client\s+\d+\]\s+\[SHADER\]\s+Delay:\s+ON\s*$",
-    re.IGNORECASE,
+END_LOAD_PATTERN = re.compile(
+    r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\s+\d+\s+[A-Fa-f0-9]+\s+\[INFO\s+Client\s+\d+\]\s+\[SHADER\]\s+Delay:\s+ON\s*$"
 )
 
-try:
-    CORES_TO_PARK = int(os.getenv("CORES_TO_PARK", 4))
-except ValueError:
-    CORES_TO_PARK = 4
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S"
+)
+logger = logging.getLogger("POE2DynamicCoreFixer")
 
-logging.basicConfig(level=logging.DEBUG, format="%(message)s")
-logger = logging.getLogger("POE2CrashFixer")
-
-class Color:
-    INFO = "\033[32m"
-    WARN = "\033[33m"
-    ERROR = "\033[31m"
-    RESET = "\033[0m"
-
-is_loading = False
 stop_flag = False
+is_loading = False
+NUM_CORES = psutil.cpu_count(logical=True) or 1
+logger.info(f"Detected {NUM_CORES} total CPU cores.")
 
-# ------------------- Functions -------------------
+def calculate_cores():
+    rest_cores = max(1, int(NUM_CORES * 0.8))
+    load_cores = NUM_CORES
+    return rest_cores, load_cores
 
-def get_number_processors():
-    num = psutil.cpu_count(logical=True)
-    if num is None:
-        logger.error(f"{Color.ERROR}Cannot detect CPU cores.{Color.RESET}")
-        sys.exit(1)
-    proc = psutil.Process()
-    try:
-        proc.cpu_affinity(list(range(num)))
-        return num
-    except:
-        pass
-    for i in range(num, 0, -1):
-        try:
-            proc.cpu_affinity(list(range(i)))
-            return i
-        except:
-            continue
-    logger.error(f"{Color.ERROR}Cannot finalize CPU core detection.{Color.RESET}")
-    sys.exit(1)
-
-NUM_CORES = get_number_processors()
-logger.info(f"{Color.INFO}Detected {NUM_CORES} processors.{Color.RESET}")
+REST_CORES, LOAD_CORES = calculate_cores()
+logger.info(f"Default core configuration: Resting with {REST_CORES} cores, Loading with {LOAD_CORES} cores.")
 
 def get_game_process():
     for proc in psutil.process_iter(["pid", "name"]):
         try:
-            if proc.info["name"] and proc.info["name"].lower() in [x.lower() for x in GAME_PROCESS_NAMES]:
+            if proc.info["name"] in GAME_PROCESS_NAMES:
                 return proc
-        except:
-            pass
+        except Exception:
+            continue
     return None
 
-def get_game_directory():
+def park_cores(cores_to_use: int):
     proc = get_game_process()
-    if proc:
-        try:
-            return proc.cwd()
-        except Exception as e:
-            logger.error(f"{Color.ERROR}Failed to get game directory: {e}{Color.RESET}")
-    return None
+    if not proc:
+        logger.error("Game process not found while trying to set CPU affinity.")
+        return
+    try:
+        allowed = list(range(min(cores_to_use, NUM_CORES)))
+        proc.cpu_affinity(allowed)
+        logger.info(f"Active cores: {allowed}")
+    except Exception as e:
+        logger.error(f"Failed to set CPU affinity: {e}")
+
+def on_loading_start():
+    global is_loading
+    is_loading = True
+    logger.info(f"Loading start detected. Enabling {LOAD_CORES} cores for faster loading.")
+    park_cores(LOAD_CORES)
+
+def on_loading_end():
+    global is_loading
+    is_loading = False
+    logger.info(f"Loading end detected. Returning to {REST_CORES} cores at rest.")
+    park_cores(REST_CORES)
 
 def get_log_file_path():
-    game_directory = get_game_directory()
-    if game_directory:
-        client_txt_path = os.path.join(game_directory, "logs", "client.txt")
-        if os.path.exists(client_txt_path):
-            return client_txt_path
-        else:
-            logger.error(f"{Color.ERROR}Log file not found in detected game directory: {client_txt_path}{Color.RESET}")
-    else:
-        logger.error(f"{Color.ERROR}Failed to detect game directory. Is the game running?{Color.RESET}")
-    return None
-
-def park_cores():
-    global is_loading
-    allowed = list(range(max(0, NUM_CORES - CORES_TO_PARK)))
     proc = get_game_process()
-    if proc:
-        try:
-            proc.cpu_affinity(allowed)
-            logger.info(f"{Color.INFO}Parked cores -> {allowed}{Color.RESET}")
-            is_loading = True
-        except Exception as e:
-            logger.error(f"{Color.ERROR}Failed to park cores: {e}{Color.RESET}")
-    else:
-        logger.error(f"{Color.ERROR}No game process found for parking.{Color.RESET}")
-
-def resume_cores():
-    global is_loading
-    allowed = list(range(NUM_CORES))
-    proc = get_game_process()
-    if proc:
-        try:
-            proc.cpu_affinity(allowed)
-            logger.info(f"{Color.INFO}Resumed full cores -> {allowed}{Color.RESET}")
-            is_loading = False
-        except Exception as e:
-            logger.error(f"{Color.ERROR}Failed to resume cores: {e}{Color.RESET}")
-    else:
-        logger.error(f"{Color.ERROR}No game process found for resuming.{Color.RESET}")
+    if not proc:
+        logger.error("Could not find game process.")
+        return None
+    try:
+        game_dir = proc.cwd()
+        if not game_dir:
+            logger.error("Could not determine game directory from process.")
+            return None
+        log_path = os.path.join(game_dir, "logs", LOG_FILE_NAME)
+        if not os.path.exists(log_path):
+            logger.error(f"Log file not found: {log_path}")
+            return None
+        return log_path
+    except Exception as e:
+        logger.error(f"Could not construct log path: {e}")
+        return None
 
 def monitor_log_file(path):
+    on_loading_end()
     try:
         with open(path, "r", encoding="utf-8") as f:
             f.seek(0, os.SEEK_END)
             while not stop_flag:
                 line = f.readline()
                 if not line:
-                    time.sleep(0.02)
+                    time.sleep(0.05)
                     continue
                 line = line.strip()
-                if start_game_pattern.match(line) or start_load_pattern.match(line):
-                    logger.info(f"{Color.INFO}Loading event detected.{Color.RESET}")
-                    park_cores()
-                elif end_load_pattern.match(line):
-                    logger.info(f"{Color.INFO}End loading event detected.{Color.RESET}")
-                    resume_cores()
+                if START_GAME_PATTERN.match(line) or START_LOAD_PATTERN.match(line):
+                    on_loading_start()
+                elif END_LOAD_PATTERN.match(line):
+                    on_loading_end()
     except FileNotFoundError:
-        logger.error(f"{Color.ERROR}Log file not found: {path}{Color.RESET}")
+        logger.error(f"Log file not found at runtime: {path}")
     except Exception as e:
-        logger.error(f"{Color.ERROR}Error reading log: {e}{Color.RESET}")
+        logger.error(f"Error reading log file: {e}")
 
 def main():
     log_path = get_log_file_path()
     if not log_path:
-        sys.exit(f"{Color.ERROR}Could not find the game's log file. Exiting...{Color.RESET}")
+        logger.critical("Exiting. Log file is not found or game not detected.")
+        sys.exit(1)
+    logger.info(f"Monitoring log file: {log_path}")
     t = threading.Thread(target=monitor_log_file, args=(log_path,), daemon=True)
     t.start()
     try:
@@ -171,9 +139,7 @@ def main():
     except KeyboardInterrupt:
         global stop_flag
         stop_flag = True
-        logger.info(f"{Color.INFO}Exiting...{Color.RESET}")
-
-# ------------------- Entry Point -------------------
+        logger.info("Exiting...")
 
 if __name__ == "__main__":
     main()
