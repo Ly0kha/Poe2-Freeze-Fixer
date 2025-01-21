@@ -1,8 +1,6 @@
-# 🛠️ POE 2 System Freeze Fixer
+# 🛠️ # POE2 Freeze Fixer
 
-**POE 2 System Freeze Fixer** is a tool designed to prevent **system-freezing issues** in **Path of Exile 2** caused by the **Windows 24H2 update** and **AMD X3D CPUs**. These freezes occur during loading screens, often requiring a forced system restart. 
-
-This tool dynamically manages CPU cores during loading screens to avoid system lock-ups and ensure smooth gameplay.
+**POE2 Freeze Fixer** is a script designed to resolve freezing issues in **Path of Exile 2** caused by the **Windows 24H2 update** and **AMD X3D CPUs**. The issue occurs during loading screens, and this script solves it by dynamically adjusting CPU core usage to **90% of available cores**, ensuring stability and preventing system lock-ups.
 
 ---
 
