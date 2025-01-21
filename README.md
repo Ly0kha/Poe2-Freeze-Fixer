@@ -7,7 +7,7 @@
 ## ✨ Features
 
 - 🔍 **Automatic Detection**: Detects the running Path of Exile 2 process.
-- ⚙️ **Dynamic Core Management**: Temporarily disables (parks) CPU cores during loading to prevent crashes.
+- ⚙️ **Dynamic Core Management**: disables (parks) CPU cores during gameplay and loading to prevent crashes.
 - 📄 **Log Monitoring**: Reads the `client.txt` file to track game loading events.
 - 🪶 **Lightweight**: Runs quietly in the background with minimal resource usage.
 - 📊 **Real-Time Feedback**: Displays **colored logs** for easy monitoring.
@@ -45,12 +45,6 @@
      - Monitor `client.txt` for loading events.
      - Dynamically adjust CPU usage during loading screens.
 
-2. **Logs**:
-   - The console will display real-time logs:
-     - ✅ **Green**: Normal operation.
-     - ⚠️ **Yellow**: Warnings.
-     - ❌ **Red**: Errors.
-
 ---
 
 ## 📋 Example Logs
@@ -58,14 +52,6 @@
   <img src="logs.png" alt="Logs Example" width="600">
 </p>
 <p align="center">
-
-**During loading**:
-✅ [INFO] Detected 16 CPU cores. ✅ [INFO] PathOfExileSteam.exe process found. ✅ [INFO] Loading detected. Parking cores -> allowed cores: [0, 1, 2, 3]
-
-**After loading**:
-✅ [INFO] Loading complete. Restoring all cores -> allowed cores: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-
-
 ---
 
 ## 🛠️ Troubleshooting
