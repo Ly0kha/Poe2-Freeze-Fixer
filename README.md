@@ -49,7 +49,7 @@
 
 ## 📋 Example Logs
 <p align="center">
-  <img src="logs.png" alt="Logs Example" width="600">
+  <img src="logss.png" alt="Logs Example" width="600">
 </p>
 <p align="center">
 ---
