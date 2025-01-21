@@ -41,17 +41,9 @@ logging.basicConfig(
 logger = logging.getLogger("POE2DynamicCoreFixer")
 
 stop_flag = False
-is_loading = False
 NUM_CORES = psutil.cpu_count(logical=True) or 1
-logger.info(f"Detected {NUM_CORES} total CPU cores.")
-
-def calculate_cores():
-    rest_cores = max(1, int(NUM_CORES * 0.8))
-    load_cores = NUM_CORES
-    return rest_cores, load_cores
-
-REST_CORES, LOAD_CORES = calculate_cores()
-logger.info(f"Default core configuration: Resting with {REST_CORES} cores, Loading with {LOAD_CORES} cores.")
+ACTIVE_CORES = max(1, int(NUM_CORES * 0.9))  # 90% of available cores
+logger.info(f"Detected {NUM_CORES} total CPU cores. Using {ACTIVE_CORES} cores (90%) for gameplay and loading.")
 
 def get_game_process():
     for proc in psutil.process_iter(["pid", "name"]):
@@ -62,7 +54,7 @@ def get_game_process():
             continue
     return None
 
-def park_cores(cores_to_use: int):
+def set_cores(cores_to_use: int):
     proc = get_game_process()
     if not proc:
         logger.error("Game process not found while trying to set CPU affinity.")
@@ -74,17 +66,26 @@ def park_cores(cores_to_use: int):
     except Exception as e:
         logger.error(f"Failed to set CPU affinity: {e}")
 
-def on_loading_start():
-    global is_loading
-    is_loading = True
-    logger.info(f"Loading start detected. Enabling {LOAD_CORES} cores for faster loading.")
-    park_cores(LOAD_CORES)
-
-def on_loading_end():
-    global is_loading
-    is_loading = False
-    logger.info(f"Loading end detected. Returning to {REST_CORES} cores at rest.")
-    park_cores(REST_CORES)
+def monitor_log_file(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            f.seek(0, os.SEEK_END)
+            while not stop_flag:
+                line = f.readline()
+                if not line:
+                    time.sleep(0.05)
+                    continue
+                line = line.strip()
+                if START_LOAD_PATTERN.match(line) or START_GAME_PATTERN.match(line):
+                    logger.info("Detected loading or game start event.")
+                    set_cores(ACTIVE_CORES)
+                elif END_LOAD_PATTERN.match(line):
+                    logger.info("Detected end of loading event.")
+                    set_cores(ACTIVE_CORES)
+    except FileNotFoundError:
+        logger.error(f"Log file not found: {path}")
+    except Exception as e:
+        logger.error(f"Error reading log: {e}")
 
 def get_log_file_path():
     proc = get_game_process()
@@ -105,32 +106,10 @@ def get_log_file_path():
         logger.error(f"Could not construct log path: {e}")
         return None
 
-def monitor_log_file(path):
-    on_loading_end()
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            f.seek(0, os.SEEK_END)
-            while not stop_flag:
-                line = f.readline()
-                if not line:
-                    time.sleep(0.05)
-                    continue
-                line = line.strip()
-                if START_GAME_PATTERN.match(line) or START_LOAD_PATTERN.match(line):
-                    on_loading_start()
-                elif END_LOAD_PATTERN.match(line):
-                    on_loading_end()
-    except FileNotFoundError:
-        logger.error(f"Log file not found at runtime: {path}")
-    except Exception as e:
-        logger.error(f"Error reading log file: {e}")
-
 def main():
     log_path = get_log_file_path()
     if not log_path:
-        logger.critical("Exiting. Log file is not found or game not detected.")
-        sys.exit(1)
-    logger.info(f"Monitoring log file: {log_path}")
+        sys.exit("Exiting: Unable to locate the game's log file.")
     t = threading.Thread(target=monitor_log_file, args=(log_path,), daemon=True)
     t.start()
     try:
